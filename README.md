@@ -477,7 +477,7 @@ Projeto desenvolvido em dupla.
 [LinkedIn](https://www.linkedin.com/in/alan-gabriel-araujo/) · [GitHub](https://github.com/Alanado)
 
 **João Vítor Oliveira de Alcântara** — front-end: interface da plataforma, em desenvolvimento.
-[LinkedIn](www.linkedin.com/in/joão-vítor-oliveira-de-alcantara-a53695339) · [GitHub](https://github.com/vittoralcan)
+[LinkedIn](https://www.linkedin.com/in/joão-vítor-oliveira-de-alcantara-a53695339) · [GitHub](https://github.com/vittoralcan)
 
 ---
 
