@@ -1,17 +1,17 @@
-<!--
-  README do repositório-vitrine do Sindesk.
-  Este repositório é público e NÃO contém código do produto.
-  Substitua tudo que estiver marcado como [PREENCHER] antes de publicar.
--->
-
 # Sindesk
 
 **Plataforma SaaS multi-tenant de gestão sindical.** Back-end em Node.js, TypeScript e PostgreSQL.
 
-> 📌 Este é o repositório de **apresentação técnica** do Sindesk. O código-fonte é privado, por se tratar de um produto em comercialização. Aqui estão a arquitetura, o modelo de dados, o contrato da API, as decisões de projeto e uma instância pública para você testar a API você mesmo.
-> Código disponível para avaliação técnica mediante solicitação.
+![Testes](https://img.shields.io/badge/testes-85%20passando-brightgreen)
+![Cobertura](https://img.shields.io/badge/cobertura-95.4%25-brightgreen)
+![Node](https://img.shields.io/badge/node-24-blue)
+![TypeScript](https://img.shields.io/badge/typescript-%5E6-blue)
+![Licença](https://img.shields.io/badge/produto-privado-lightgrey)
 
-[🔗 API em produção](Em breve) · [📘 Documentação Swagger](https://sindesk-api.onrender.com/api/v1/docs) · [🎥 Demonstração em 60s](<img width="1905" height="941" alt="Image" src="https://github.com/user-attachments/assets/3f9d7a5c-7fc2-48dd-88e4-e2f80a0e7e12" />)
+**[🔗 API em produção](https://sindesk-api.onrender.com)** · **[📘 Documentação Swagger](https://sindesk-api.onrender.com/api/v1/docs)** · [Credenciais de demonstração](#experimente)
+
+> 📌 Este é o repositório de **apresentação técnica** do Sindesk. O código-fonte é privado, por se tratar de um produto em comercialização. Aqui estão a arquitetura, o modelo de dados, o contrato da API, a rastreabilidade entre regra de negócio e teste, e uma instância pública para você testar a API você mesmo.
+> Código disponível para avaliação técnica mediante solicitação: **alan360gabriel@gmail.com**
 
 ---
 
@@ -35,6 +35,12 @@ Um back-end multi-tenant onde cada entidade sindical opera sobre uma base única
 
 ---
 
+## Demonstração
+
+![Isolamento multi-tenant: login como ADMIN de um sindicato, consulta a um filiado, troca de token para o ADMIN de outro sindicato e 404 ao tentar acessar o mesmo registro](https://github.com/user-attachments/assets/3f9d7a5c-7fc2-48dd-88e4-e2f80a0e7e12)
+
+---
+
 ## Experimente
 
 A instância de demonstração tem **dois sindicatos distintos**, propositalmente. Faça login com um e tente alcançar os dados do outro.
@@ -44,9 +50,11 @@ A instância de demonstração tem **dois sindicatos distintos**, propositalment
 | Metalúrgicos do DF | `admin@metalurgicos.org.br` | `Demo@1234` | ADMIN |
 | Metalúrgicos do DF | `secretario@metalurgicos.org.br` | `Demo@1234` | SECRETARIO |
 | Metalúrgicos do DF | `assistente@metalurgicos.org.br` | `Demo@1234` | ASSISTENTE |
+| Metalúrgicos do DF | `tesoureiro@metalurgicos.org.br` | `Demo@1234` | TESOUREIRO |
 | Comerciários de Brasília | `admin@comerciarios.org.br` | `Demo@1234` | ADMIN |
 
 > Ambiente de demonstração, com dados fictícios gerados por seed. Os CPFs são matematicamente válidos e não correspondem a pessoas reais.
+> Plano `free` do Render: a primeira requisição após um período de inatividade pode levar cerca de 30 segundos (cold start). Se a API não responder de imediato, é isso — e não o sistema.
 
 O Swagger tem o botão **Authorize** configurado — dá para autenticar e testar todos os endpoints direto no navegador.
 
@@ -56,20 +64,20 @@ O Swagger tem o botão **Authorize** configurado — dá para autenticar e testa
 
 ## Stack
 
-| Camada | Tecnologia |
+| Camada | Escolha |
 | :--- | :--- |
-| Runtime | Node.js 20 LTS |
-| Linguagem | TypeScript |
-| Framework | Express |
-| Banco | PostgreSQL 15 |
-| Acesso a dados | Prisma |
-| Validação | Zod |
-| Autenticação | JWT (HS256) + bcrypt |
+| Runtime | Node.js 24 (LTS) |
+| Linguagem | TypeScript ^6 |
+| Framework web | Express ^5 |
+| Banco | PostgreSQL 15+ |
+| Acesso a dados | Prisma ORM ^7 (driver adapter `@prisma/adapter-pg`) |
+| Validação | Zod ^4 |
+| Autenticação | JWT (HS256, 8h) + bcryptjs (custo 12 em produção) |
+| Documentação | OpenAPI 3.0 gerado a partir dos schemas Zod + Swagger UI |
 | Testes | Vitest + Supertest, contra PostgreSQL real em container |
-| Documentação | OpenAPI 3.0 / Swagger UI |
 | Ambiente | Docker + Docker Compose |
 | CI | GitHub Actions |
-| Deploy | Render + PostgreSQL gerenciado |
+| Deploy | Render (Blueprint via `render.yaml`) + PostgreSQL gerenciado |
 
 ---
 
@@ -143,6 +151,10 @@ async findByIdInTenant(sindicatoId: string, id: string): Promise<Filiado | null>
 
 Esquecer o filtro deixa de ser um bug silencioso em produção e vira erro de compilação. A garantia migra de "lembrar" para "o compilador não deixa".
 
+Há ainda uma **segunda barreira, redundante de propósito**: os schemas Zod dos DTOs operam em modo `strip`. Nenhum DTO declara `sindicatoId`, então um cliente que injete esse campo no corpo tem o valor descartado na validação, antes de chegar ao service. As duas defesas protegem o mesmo invariante por caminhos independentes.
+
+A única exceção deliberada é a busca de usuário no login: o e-mail é único por sindicato, não globalmente, então autenticar exige consultar antes de conhecer o tenant. A função se chama `findManyByEmailAcrossTenants` — o nome carrega o aviso para todo ponto de chamada — e o `sindicatoId` do token emitido vem sempre da linha já autenticada no banco.
+
 ### 3. Recurso de outro tenant responde 404, nunca 403
 
 Um `403 Forbidden` significa "existe, mas você não pode". Isso confirma a existência do registro — e permite a alguém, iterando IDs, descobrir quais filiados existem em outros sindicatos, mesmo sem ler nenhum dado.
@@ -184,6 +196,8 @@ WHERE sindicato_id = $1;
 
 Expressar isso com o ORM produziria sete consultas separadas ou uma construção bem menos legível. ORM para o que é repetitivo, SQL para o que é analítico.
 
+É o único ponto do sistema com SQL cru, e ele usa `Prisma.sql` com template parametrizado: o `sindicatoId` vira *bind parameter*, não concatenação de string. SQL cru sem risco de injeção é uma escolha, não um acidente.
+
 ### 6. Unicidade de CPF garantida no banco, não só na aplicação
 
 A verificação prévia em código existe para devolver um erro claro, mas ela tem condição de corrida: duas requisições simultâneas com o mesmo CPF podem passar as duas pela checagem antes de qualquer `INSERT` acontecer.
@@ -211,6 +225,16 @@ Nos volumes atuais a diferença é imperceptível. A escolha foi feita agora por
 Refresh token exige armazenamento, rotação, revogação e uma superfície de ataque adicional. Para um sistema onde o operador trabalha em jornada administrativa, um token de 8 horas resolve o caso de uso real com uma fração da complexidade.
 
 Está no roadmap para quando houver acesso pelo próprio filiado, que tem padrão de uso diferente.
+
+### 9. Documentação que quebra o build quando diverge do código
+
+O documento OpenAPI é gerado a partir dos próprios schemas Zod, e um teste de integração valida o resultado contra o schema OpenAPI 3.0 **e** a consistência rota ↔ documentação nos dois sentidos: rota sem documentação falha, documentação sem rota também.
+
+Documentação mantida à mão diverge do código em semanas. Aqui, divergir derruba o CI.
+
+### 10. Conversão `snake_case` ↔ `camelCase` declarativa
+
+O banco usa `snake_case`, a API usa `camelCase`, e a conversão é inteiramente declarativa via `@map`/`@@map` no `schema.prisma`. Nenhuma função de mapeamento manual nos DTOs de saída.
 
 ---
 
@@ -326,6 +350,27 @@ Transições são declaradas como estrutura de dados e validadas no serviço. To
 
 ---
 
+## Rastreabilidade — regra de negócio → implementação → teste
+
+| Regra | Implementação | Teste |
+| :--- | :--- | :--- |
+| RN-AUTH-01 (bcrypt custo 12, parametrizado por `BCRYPT_ROUNDS`) | `auth.service.ts` | Exercitado por todo teste de login |
+| RN-AUTH-02 (e-mail único por sindicato; ambiguidade resolvida testando a senha) | `usuario.repository.ts#findManyByEmailAcrossTenants` | `auth.spec.ts` — "e-mail duplicado entre sindicatos" |
+| RN-AUTH-03 (usuário inativo não autentica) | `auth.service.ts#autenticar` | `auth.spec.ts` — "usuário inativo retorna 401" |
+| RN-AUTH-04 (rate limit 10/15min) | `rateLimiter.ts` | Não testado automaticamente — ver Limitações |
+| RN-FIL-01 (CPF: sanitização, módulo 11, sequências repetidas) | `shared/utils/cpf.ts` | `cpf.spec.ts` (11 casos) + integração (`INVALID_CPF`) |
+| RN-FIL-02 (unicidade por sindicato: pré-checagem + violação de constraint) | `filiados.repository.ts#createWithAudit` | Duplicado (409) e mesmo CPF em tenant diferente (201) |
+| RN-FIL-03 (matriz de transição de status) | `shared/utils/transicaoStatus.ts` | `transicao-status.spec.ts` — matriz 4×4 completa + integração via HTTP |
+| RN-FIL-04 (vigência, `vigenciaExpirada`, filiação não futura) | `criar-filiado.dto.ts` e `filiados.controller.ts` | `filiados.spec.ts` |
+| RN-AUD-01 (rollback se a auditoria falhar) | `filiados.repository.ts#createWithAudit` | `filiados.spec.ts` — "falha forçada na gravação da auditoria" |
+| RN-AUD-02 (conteúdo do log) | `shared/audit/auditLog.repository.ts` | `filiados.spec.ts` — log de cadastro e de mudança de status |
+| RN-AUD-03 (nunca gravar senha, hash ou token) | `shared/audit/sanitizarParaAuditoria.ts` | `sanitizarParaAuditoria.spec.ts` + asserção sobre o JSON serializado |
+| **Isolamento multi-tenant** | `tenantMiddleware.ts` + tenant em todo repositório | `isolamento-multi-tenant.spec.ts` — 4 superfícies |
+| RBAC | `shared/security/rbac.ts` + `rbacMiddleware.ts` | 403 em `POST /filiados` (ASSISTENTE) e em `/dashboard/metrics` (SECRETARIO) |
+| OpenAPI não diverge das rotas reais | `shared/docs/*.openapi.ts` | `openapi.spec.ts` |
+
+---
+
 ## Testes
 
 Suíte em Vitest + Supertest, executada contra **PostgreSQL real em container** — não mock, não SQLite. O valor central do sistema depende de constraints, índices e cláusulas `WHERE`; um banco simulado testaria a simulação.
@@ -343,12 +388,18 @@ it('não expõe filiado do Sindicato A para operador do Sindicato B', async () =
 
 O quarto item é o que costuma escapar. É comum blindar as rotas de leitura e deixar a consulta de agregação sem o filtro de tenant — o vazamento acontece pelo número no dashboard, não pela lista.
 
-Metas de cobertura: 100% em middlewares e utilitários de regra, 90% em services, mínimo de 70% global.
+### Cobertura
 
-![Testes](https://img.shields.io/badge/testes-85%20passando-brightgreen)
-![Cobertura](https://img.shields.io/badge/cobertura-95.4%25-brightgreen)
-![Node](https://img.shields.io/badge/node-24-blue)
-![TypeScript](https://img.shields.io/badge/typescript-%5E6-blue)
+**85 testes, todos passando.**
+
+| Área | Meta | Real |
+| :--- | :---: | :---: |
+| `shared/middlewares/` | 100% | **100%** |
+| `shared/utils/` | 100% | **100%** |
+| `modules/*/services/` | 90% | **100%** statements/lines |
+| Global | 70% de linhas | **95,4%** linhas · 95,45% statements · 90,43% branches |
+
+Áreas abaixo de 100% por decisão consciente: o ramo de violação de constraint em `filiados.repository.ts` (exige condição de corrida real, não reproduzível de forma síncrona) e `app.ts`/`env.ts` (bootstrap, validado manualmente).
 
 ---
 
@@ -364,16 +415,35 @@ Nenhum sistema está pronto, e listar o que falta vale mais do que omitir.
 | Imutabilidade de `audit_logs` garantida por convenção de código, não por privilégio de banco | Fase 2 |
 | Rate limit em memória — não funciona com múltiplas instâncias | Fase 2 (store compartilhado) |
 | E-mail único por sindicato gera ambiguidade no login quando a mesma pessoa opera em dois | Resolução simplificada no MVP |
+| Rate limit não testado automaticamente (desligado em `NODE_ENV=test`, por desenho) | Conhecido |
+| Ramo de violação de constraint de CPF sem teste automatizado | Exige condição de corrida real |
 | Sem refresh token | Decisão consciente para o perfil de uso atual |
 
 O produto **não** se anuncia como "adequado à LGPD". Ele implementa controle de acesso, isolamento entre controladores e trilha de auditoria — que são parte da adequação, não a adequação inteira.
+
+### Limitações do ambiente de demonstração
+
+O plano `free` do Render tem banco com expiração de 30 dias e serviço que dorme após período sem tráfego. Se o link estiver fora do ar, é isso — e não o sistema.
+
+---
+
+## Decisões tomadas onde a spec era omissa
+
+Especificação escrita antes do código sempre encontra a realidade no meio do caminho. As de maior impacto:
+
+- **Prisma 7 exige driver adapter explícito** (`@prisma/adapter-pg`) — mudança de arquitetura em relação ao previsto.
+- **Express 5 tornou `req.query` e `req.params` getters sem setter** — o middleware de validação usa `Object.defineProperty` em vez de atribuição direta.
+- **Espionar o client do Prisma não intercepta chamadas feitas de dentro de `$transaction`** — o teste de rollback espiona a função exportada pelo repositório, não o client.
+- **TypeScript fixado em `^6`** por incompatibilidade de ferramental de lint, não por preferência.
+- **O validador de CPF foi escrito antes do previsto**, porque o seed já precisava gerar CPFs válidos.
+- **Um índice previsto na spec original não era SQL válido** (`ILIKE pattern_ops` não existe como classe de operador) e foi substituído pelo índice GIN com trigramas descrito acima.
 
 ---
 
 ## Roadmap
 
-**Fase 1 — Núcleo** ✅
-Autenticação, isolamento multi-tenant, RBAC, cadastro e consulta de filiados, mudança de status com histórico, métricas, trilha de auditoria.
+**Fase 1 — Núcleo executável** ✅
+Autenticação, isolamento multi-tenant, RBAC, cadastro e consulta de filiados, mudança de status com histórico, métricas, trilha de auditoria, testes, CI e deploy.
 
 **Fase 2 — Cadastro completo**
 Vínculos profissionais com histórico de empregadores, edição completa do cadastro, renovação de vigência, relatórios exportáveis em CSV, anonimização para LGPD.
@@ -406,7 +476,7 @@ Projeto desenvolvido em dupla.
 **Alan Gabriel Araujo dos Reis** — back-end: modelagem de dados, API, autenticação e RBAC, isolamento multi-tenant, trilha de auditoria, testes, containerização e deploy.
 [LinkedIn](https://www.linkedin.com/in/alan-gabriel-araujo/) · [GitHub](https://github.com/Alanado)
 
-**João Alcântara** — front-end: Em desenvolvimento.
+**João Vítor Oliveira de Alcântara** — front-end: interface da plataforma, em desenvolvimento.
 [LinkedIn](www.linkedin.com/in/joão-vítor-oliveira-de-alcantara-a53695339) · [GitHub](https://github.com/vittoralcan)
 
 ---
